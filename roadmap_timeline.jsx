@@ -15,8 +15,8 @@ const RM_ARMS = [
 ];
 
 // Horizon windows mapped to years
-const YEAR_START = 2026;
-const YEAR_END   = 2036;
+const FULL_START = 2026;
+const FULL_END   = 2036;
 const HZ_YEARS = { h2: [2026, 2028], h5: [2028, 2031], h10: [2031, 2036] };
 
 function RoadmapTimelineView({ nsFilter, horizonFilter, openDrawer }) {
@@ -24,6 +24,11 @@ function RoadmapTimelineView({ nsFilter, horizonFilter, openDrawer }) {
   const [armFilter, setArmFilter] = useStateRM(() => localStorage.getItem("diffuse-arm") || "all");
 
   React.useEffect(() => { localStorage.setItem("diffuse-arm", armFilter); }, [armFilter]);
+
+  // Zoom the visible year range to the selected horizon; else show full decade.
+  const [YEAR_START, YEAR_END] = horizonFilter === "all"
+    ? [FULL_START, FULL_END]
+    : HZ_YEARS[horizonFilter];
 
   // Build a flat list of events w/ assigned year and lane side.
   // For each horizon, distribute its milestones across its year range (inclusive of start, exclusive of end for next).
@@ -61,8 +66,8 @@ function RoadmapTimelineView({ nsFilter, horizonFilter, openDrawer }) {
 
   // ---- layout constants ----
   const W = 1600;
-  const PAD_L = 60;
-  const PAD_R = 60;
+  const PAD_L = 140;
+  const PAD_R = 140;
   const trackW = W - PAD_L - PAD_R;
   const yearsSpan = YEAR_END - YEAR_START;
   const xAt = (year) => PAD_L + ((year - YEAR_START) / yearsSpan) * trackW;
@@ -105,6 +110,11 @@ function RoadmapTimelineView({ nsFilter, horizonFilter, openDrawer }) {
   // Year ticks (integer years)
   const yearTicks = [];
   for (let y = YEAR_START; y <= YEAR_END; y++) yearTicks.push(y);
+  // When zoomed into a horizon, make every year an anchor so the axis reads well.
+  const zoomed = horizonFilter !== "all";
+  const anchorYears = zoomed
+    ? yearTicks
+    : [2026, 2028, 2031, 2036];
 
   const [hover, setHover] = useStateRM(null);
 
@@ -143,9 +153,14 @@ function RoadmapTimelineView({ nsFilter, horizonFilter, openDrawer }) {
             </marker>
           </defs>
 
-          {/* Horizon band shading (chapter title sits above the axis, out of the card zone) */}
-          {["h2","h5","h10"].map((hz, i) => {
+          {/* Horizon band shading (only draw for horizons inside the visible range) */}
+          {["h2","h5","h10"].filter(hz => {
             const [ys, ye] = HZ_YEARS[hz];
+            return ye > YEAR_START && ys < YEAR_END;
+          }).map((hz, i) => {
+            const [ys0, ye0] = HZ_YEARS[hz];
+            const ys = Math.max(ys0, YEAR_START);
+            const ye = Math.min(ye0, YEAR_END);
             const x1 = xAt(ys), x2 = xAt(ye);
             const dim = horizonFilter !== "all" && horizonFilter !== hz;
             return (
@@ -158,8 +173,8 @@ function RoadmapTimelineView({ nsFilter, horizonFilter, openDrawer }) {
             );
           })}
 
-          {/* horizon dividers */}
-          {[2028, 2031].map(y => (
+          {/* horizon dividers — only those inside the visible range */}
+          {[2028, 2031].filter(y => y > YEAR_START && y < YEAR_END).map(y => (
             <line key={y} x1={xAt(y)} y1={34} x2={xAt(y)} y2={H - 30}
               stroke="var(--rule)" strokeDasharray="3 5" strokeWidth="1" />
           ))}
@@ -168,15 +183,12 @@ function RoadmapTimelineView({ nsFilter, horizonFilter, openDrawer }) {
           <line x1={PAD_L - 20} y1={axisY} x2={W - PAD_R + 20} y2={axisY}
             stroke="var(--ink)" strokeWidth="1.3" markerEnd="url(#rm3-arrow)" />
 
-          {/* Year labels on axis (large, greyed where no milestone sits close) */}
+          {/* Year labels on axis */}
           {yearTicks.map(y => {
-            const isMilestoneYear = events.some(ev => Math.abs(ev.year - y) < 0.5);
-            // big decade markers
-            const isAnchor = [2026, 2028, 2031, 2036].includes(y);
-            const fs = isAnchor ? 28 : 16;
+            const isAnchor = anchorYears.includes(y);
+            const fs = zoomed ? 22 : (isAnchor ? 28 : 16);
             const color = isAnchor ? "var(--ink)" : "var(--mute-2)";
             const fw = isAnchor ? 600 : 400;
-            // small tick mark
             return (
               <g key={y}>
                 <line x1={xAt(y)} y1={axisY - 5} x2={xAt(y)} y2={axisY + 5}
@@ -200,9 +212,14 @@ function RoadmapTimelineView({ nsFilter, horizonFilter, openDrawer }) {
             );
           })}
 
-          {/* Program-level horizon chapter labels at the TOP of the section (above all milestone cards) */}
-          {["h2","h5","h10"].map(hz => {
+          {/* Program-level horizon chapter labels — only visible horizons */}
+          {["h2","h5","h10"].filter(hz => {
             const [ys, ye] = HZ_YEARS[hz];
+            return ye > YEAR_START && ys < YEAR_END;
+          }).map(hz => {
+            const [ys0, ye0] = HZ_YEARS[hz];
+            const ys = Math.max(ys0, YEAR_START);
+            const ye = Math.min(ye0, YEAR_END);
             const x = (xAt(ys) + xAt(ye)) / 2;
             const kicker = hz === "h2" ? "2-YEAR"
               : hz === "h5" ? "5-YEAR"
